@@ -1,0 +1,18 @@
+Select name
+from msdb..sysjobs j
+join msdb..sysjobactivity a on j.job_id = a.job_id and j.name = 'CMDR.CLEANUP.Purge_Historical_Transactions'
+Where start_execution_date is not null and stop_execution_date is null
+If @@rowcount > 0
+
+Begin
+
+EXEC msdb.dbo.sp_stop_job @job_name = 'CMDR.CLEANUP.Purge_Historical_Transactions'
+
+EXEC msdb.dbo.sp_send_dbmail @profile_name = 'ALERT.CMDR.SQL', @recipients = 'DL-CommanderSupport@diebold.com',
+
+@body = 'The CMDR.CLEANUP.Purge_Historical_Transactions Job had to been stopped due to long run time.', @subject = 'Manually Stopped Long Running SQL Agent Job' ;
+
+End
+
+Else Return
+
