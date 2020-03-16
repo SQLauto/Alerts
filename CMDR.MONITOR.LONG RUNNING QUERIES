@@ -1,0 +1,69 @@
+DECLARE @xml NVARCHAR(max)
+DECLARE @body NVARCHAR(max)
+-- specify long running query duration threshold
+DECLARE @longrunningthreshold int
+SET @longrunningthreshold=5
+-- step 1: collect long running query details.
+;WITH cte
+AS (SELECT [Session_id]=spid,
+[Sessioin_start_time]=(SELECT start_time
+FROM sys.dm_exec_requests
+WHERE spid = session_id),
+[Session_status]=Ltrim(Rtrim([status])),
+[Session_Duration]=Datediff(mi, (SELECT start_time
+FROM sys.dm_exec_requests
+WHERE spid = session_id),
+Getdate()
+),
+[Session_query] = Substring (st.text, ( qs.stmt_start / 2 ) + 1,
+( ( CASE qs.stmt_end
+WHEN -1
+THEN
+Datalength(st.text)
+ELSE qs.stmt_end
+END
+-
+qs.stmt_start ) / 2 ) +
+1)
+FROM sys.sysprocesses qs
+CROSS apply sys.Dm_exec_sql_text(sql_handle) st)
+ 
+-- step 2: generate html table 
+SELECT @xml = Cast((SELECT session_id AS 'td',
+'',
+session_duration AS 'td',
+'',
+session_status AS 'td',
+'',
+[session_query] AS 'td'
+FROM cte
+WHERE session_duration >= @longrunningthreshold 
+and Session_query not like 'sp_server_diagnostics' 
+and Session_query not like '%FROM ExternalMailQueue%' 
+FOR xml path('tr'), elements) AS NVARCHAR(max))
+ 
+-- step 3: do rest of html formatting
+SET @body =
+N'<H1 style="color: #000000">Long Running Queries ( Limit > 5 Minute )</H1>' + N'<table border="1">' +
+    
+    '<body><table cellpadding=3 cellspacing=3 border=3>' +
+'<tr bgcolor=#F6AC5D>'+
+'<td align=center><b>Session_id</b></td>' +
+'<td align=center><b>Session_Duration(Minute)</b></td>' +
+'<td align=center><b>Session_status</b></td>' +
+'<td align=center><b>Session_query</b></td>' +
+'</tr>'
+    
+SET @body = @body + @xml + '</table></body></html>'
+ 
+-- step 4: send email if a long running query is found.
+IF( @xml IS NOT NULL )
+BEGIN
+EXEC msdb.dbo.Sp_send_dbmail
+
+@body = @body,
+@body_format = 'HTML'
+        ,@profile_name = 'ALERT.CMDR.SQL'
+        ,@recipients='DL-CommanderSupport@diebold.com'
+        ,@Subject = N'Long Running Queries'
+END
