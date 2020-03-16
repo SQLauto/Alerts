@@ -1,0 +1,81 @@
+
+
+DECLARE @FileSize varchar(20),
+
+                 @LogicalFile varchar(50),
+
+                 @TargetFileSize int,
+
+                 @NewFileSize varchar(20),
+
+                 @IncrementSize int
+
+        
+
+ 
+
+---Logical name of Database file to shrink
+
+SET @LogicalFile = 'CommanderWarehouse'  
+
+ 
+
+---This is the desired target size in MB after the shrink operation.
+
+SET @TargetFileSize = 4233687.50    
+
+ 
+
+---The increment amount in MB the file will shrink by in each pass (e.g. 128)
+
+SET @IncrementSize = 1024   
+
+ 
+
+ 
+
+SET @FileSize = (SELECT [Size]/128 FROM dbo.Sysfiles WHERE [name] = @LogicalFile)    
+
+ 
+
+ 
+
+SET @NewFileSize = @FileSize -@IncrementSize
+
+ 
+
+ 
+
+WHILE @FileSize > @TargetFileSize
+
+    
+
+    BEGIN
+
+ 
+
+        BEGIN
+
+ 
+
+            EXEC ('DBCC SHRINKFILE ' + '(N' + '''' + @LogicalFile +'''' + ', ' + @NewFileSize + ')')
+
+                        
+
+        END
+
+            
+
+            SET    @FileSize = (SELECT [Size]/128 FROM dbo.Sysfiles WHERE [name] = @LogicalFile)
+
+        
+
+            SET @NewFileSize = @FileSize -@IncrementSize
+
+ 
+
+    END
+
+ 
+
+GO
