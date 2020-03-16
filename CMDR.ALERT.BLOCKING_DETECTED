@@ -1,0 +1,89 @@
+--Occurs every day every 5 minute(s) between 12:00:00 AM and 11:59:59 PM.
+
+SET NOCOUNT ON
+
+SELECT
+
+blocking_session_id AS BlockingSessionID,
+
+session_id AS VictimSessionID,
+
+(SELECT [text] FROM sys.sysprocesses
+
+CROSS APPLY sys.dm_exec_sql_text([sql_handle])
+
+WHERE spid = blocking_session_id) AS BlockingQuery,
+
+[text] AS VictimQuery,
+
+wait_time/60000 AS WaitDurationMin,
+
+wait_type AS WaitType
+
+INTO #temp_blockings_detected
+FROM sys.dm_exec_requests
+
+CROSS APPLY sys.dm_exec_sql_text([sql_handle])
+
+WHERE blocking_session_id > 0 and database_id >=5 and wait_time >300000
+
+if (select COUNT (*) from #temp_blockings_detected 
+WHERE BlockingSessionID > 50 ) <>0
+--begin
+--select * from  #temp_blockings_detected
+begin
+    DECLARE @tableHTML NVARCHAR(MAX);
+
+    SET @tableHTML =N'<H1 style="color: #000000">Blocking Report: </H1>' + N'<table border="1">' +
+    
+    '<body><table cellpadding=3 cellspacing=3 border=3>' +
+'<tr bgcolor=#F6AC5D>'+
+'<td align=center><b>BlockingSessionID</b></td>' +
+'<td align=center><b>VictimSessionID</b></td>' +
+'<td align=center><b>BlockingQuery</b></td>' +
+'<td align=center><b>VictimQuery</b></td>' +
+'<td align=center><b>WaitDurationMin</b></td>' +
+'<td align=center><b>WaitType</b></td>' +
+'</tr>'
+    
+    
+    
+     --N'<H1>Blocking Report</H1>' + N'<table border="1">' + N'<tr>' + N'<th>BlockingSessionID</th>' + N'<th>VictimSessionID</th>' + 
+     --                N'<th>BlockingQuery</th><th>VictimQuery</th><th>WaitDurationMin</th>' + 
+     --                N'<th>WaitType</th>' + '</tr>' 
+     + CAST((
+                SELECT td = blocking_session_id 
+                    ,''
+                    ,td = session_id
+                    ,''
+                    ,td = (SELECT [text] FROM sys.sysprocesses
+
+CROSS APPLY sys.dm_exec_sql_text([sql_handle])
+
+WHERE spid = blocking_session_id)
+                    ,''
+                    ,td = [text]
+                    ,''
+                    ,td = wait_time/60000
+                    ,''
+                    ,td = Wait_Type                   
+                             
+FROM sys.dm_exec_requests
+
+CROSS APPLY sys.dm_exec_sql_text([sql_handle])
+
+WHERE blocking_session_id > 0 and database_id >=5 and wait_time >300000
+              
+                FOR XML PATH('tr')
+                    ,TYPE
+                ) AS NVARCHAR(MAX)) + N'</table>';
+
+    EXEC msdb.dbo.sp_send_dbmail @body = @tableHTML
+        ,@body_format = 'HTML'
+        ,@profile_name = 'ALERT.CMDR.SQL'
+        ,@recipients='DL-CommanderSupport@diebold.com;Ashish.Gupta@dieboldnixdorf.com'
+        ,@Subject = N'Blocking Detected'
+
+
+end
+drop table #temp_blockings_detected
