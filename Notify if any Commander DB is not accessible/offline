@@ -1,0 +1,27 @@
+CREATE TABLE #SQLErrorLog
+(
+LogDate	DATETIME,
+ProcessInfo	VARCHAR(20),
+Text	VARCHAR(500)
+)
+GO
+
+Truncate table #SQLErrorLog
+
+INSERT INTO #SQLErrorLog
+EXEC xp_readerrorlog 0,1,' is not available'
+
+
+IF EXISTS(SELECT * FROM #SQLErrorLog where LogDate>=DATEADD(MINUTE, -15, GETDATE() ))
+BEGIN
+	EXEC msdb.dbo.sp_send_dbmail
+		@profile_name = 'ALERT.CMDR.SQL',
+		@recipients = 'shafiullah.mohammad@diebold.com;DL-CommanderSupport@diebold.com;DL-TDCommander@diebold.com;Michael.Boone@diebold.com;Sumit.Razdan@diebold.com',
+		--@recipients= 'shafiullah.mohammad@diebold.com;Sumit.Razdan@diebold.com',
+		@subject = 'Call Commander Team - Commander database(s) not avaliable: High Severity',
+		 @Body = 'Team, 
+							  There appear to be database outage for one or more Commander database(s). Please take action.
+		 Monitoring Alert ' ;
+END
+
+DROP TABLE #SQLErrorLog
