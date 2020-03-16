@@ -1,0 +1,44 @@
+if object_id('tempdb..##error') is not null drop table ##error
+go
+
+create table ##error
+(
+id int identity(1, 1),
+logDate datetime,
+processInfo varchar(20),
+errorText nvarchar(max)
+)
+
+insert into ##error
+exec master.dbo.sp_readErrorLog
+
+select logDate, processInfo, errorText
+from ##error
+where id >=
+(
+   select max(id)
+   from ##error
+   where errorText like '%deadlock encountered%'
+)
+
+declare @subject varchar(250)
+select @subject = 'Deadlock reported on ' + @@servername
+
+EXEC msdb.dbo.sp_send_dbmail
+   @profile_name = 'ALERT.CMDR.SQL',
+       @recipients='DL-CommanderSupport@diebold.com',
+       @subject = @subject,
+       @body = 'A deadlock has been recorded.  Further information can be found in the attached file.',
+       @query = 'select logDate, processInfo, errorText
+from ##error
+where id >=
+(
+select max(id)
+from ##error
+where errorText like ''%deadlock encountered%''
+)',
+       @query_result_width = 600,
+      @attach_query_result_as_file = 1
+
+drop table ##error
+
