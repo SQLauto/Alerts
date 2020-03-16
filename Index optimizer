@@ -1,0 +1,1 @@
+sqlcmd -E -S $(ESCAPE_SQUOTE(SRVR)) -d CommanderReporting -Q "EXECUTE dbo.Proc_CMDR_Index_Optimizer @Databases = 'CMDP_OLAP',@FragmentationLevel1 = 5,@FragmentationLevel2 = 15,@UpdateStatistics = 'ALL',@FillFactor = 80,@LogToTable = 'Y'" -b
