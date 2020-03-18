@@ -1,0 +1,50 @@
+USE [EDWDba]
+GO
+
+/****** Object:  Table [monitoring].[deadlockInformation]    Script Date: 3/18/2020 1:27:03 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [monitoring].[deadlockInformation](
+	[deadlockInformationId] [int] IDENTITY(1,1) NOT NULL,
+	[deadlockTimestamp] [datetime2](7) NULL,
+	[victimProcessId] [nvarchar](250) NULL,
+	[victimSpid] [int] NULL,
+	[waitResource1] [nvarchar](250) NULL,
+	[waitTime1] [int] NULL,
+	[ownerId1] [bigint] NULL,
+	[currentDb1] [int] NULL,
+	[lastTranStarted1] [datetime2](7) NULL,
+	[lastBatchStarted1] [datetime2](7) NULL,
+	[statement1] [nvarchar](max) NULL,
+	[client1] [nvarchar](250) NULL,
+	[hostname1] [nvarchar](250) NULL,
+	[loginname1] [nvarchar](250) NULL,
+	[victorProcessid2] [nvarchar](250) NULL,
+	[victorSpid] [int] NULL,
+	[waitResource2] [nvarchar](250) NULL,
+	[waitTime2] [int] NULL,
+	[ownerId2] [bigint] NULL,
+	[currentDb2] [int] NULL,
+	[lastTranStarted2] [datetime2](7) NULL,
+	[lastBatchStarted2] [datetime2](7) NULL,
+	[statement2] [nvarchar](max) NULL,
+	[client2] [nvarchar](250) NULL,
+	[hostname2] [nvarchar](250) NULL,
+	[loginname2] [nvarchar](250) NULL,
+	[deadlockXML] [xml] NULL,
+	[resource1] [nvarchar](250) NULL,
+	[resource2] [nvarchar](250) NULL,
+	[deadlockImagePath] [varchar](500) NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[deadlockInformationId] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+
+GO
+
+
