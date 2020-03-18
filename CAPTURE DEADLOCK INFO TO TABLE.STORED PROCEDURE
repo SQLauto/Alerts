@@ -1,0 +1,170 @@
+  
+create procedure [monitoring].[getDeadlockInformation]  
+as  
+ --     Credit to Tomas Lind (http://tomaslind.net/2015/04/10/capturing-deadlock-information/for) for the idea for this script.    
+    set nocount on;  
+         
+    declare @xeEventFileTarget xml,  
+            @xeCurrentFile nvarchar(260),  
+            @xeFilePath nvarchar(260),  
+            @lowid int,  
+            @highid int;  
+         
+    declare @dirTree table  
+            (objectName nvarchar(260), depth int, isFile INT);  
+         
+    declare @eventFiles table  
+            (  
+                id int identity primary key clustered,  
+                [fileName] varchar(260)  
+            );  
+         
+    declare @deadlockxml table  
+            (id int identity primary key clustered, eventdata xml);  
+         
+    select @xeEventFileTarget = CONVERT(xml, xst.target_data)  
+  from   sys.dm_xe_sessions xs  
+  inner join sys.dm_xe_session_targets xst  
+   on  xs.[address] = xst.event_session_address  
+  where  xs.name = 'system_health'  
+    and xst.target_name = 'event_file';  
+         
+    select @xeCurrentFile = t.c.value('File[1]/@name', 'varchar(260)')  
+  from   @xeEventFileTarget.nodes('/EventFileTarget') as t(c);  
+         
+    select @xeFilePath = substring(@xeCurrentFile, 1, charindex('system_health', @xeCurrentFile) - 1);  
+         
+    insert into @dirTree  
+  execute xp_dirtree @xeFilePath, 1, 1;  
+         
+    insert into @eventFiles  
+  select objectName  
+   from   @dirTree  
+   where  objectName LIKE 'system_health%'  
+     and isFile = 1;  
+         
+    select @lowid = MIN(id),  
+            @highid = MAX(id)  
+  from   @eventFiles;  
+         
+    while @lowid IS NOT NULL  
+  and @lowid <= @highid  
+  begin;  
+   select @xeCurrentFile = @xeFilePath + [fileName]  
+    from   @eventFiles  
+    where  id = @lowId;  
+             
+   insert into @deadlockxml  
+    select CAST(event_data as xml) as eventdata  
+     from   sys.fn_xe_file_target_read_file(@xeCurrentFile, NULL, NULL, NULL)  
+     where  OBJECT_NAME = 'xml_deadlock_report';  
+             
+   select @lowid = @lowid + 1;  
+  end;  
+         
+    with cteDeadlocks  
+        as (  
+     select dld.eventdata,  
+     c.value('@timestamp', 'datetime2') as deadlockTimestamp,  
+     c.value('(data/value/deadlock/victim-list/victimProcess)[1]/@id', 'nvarchar(250)') as victimProcessId,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@spid', 'int') as victimSpid,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@waitresource', 'nvarchar(250)') as waitResource1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@waittime', 'int') as waitTime1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@ownerId', 'bigint') as ownerId1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@currentdb', 'int') as currentDb1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@lasttranstarted', 'datetime2') as lastTranStarted1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@lastbatchstarted', 'datetime2') as lastBatchStarted1,  
+     c.value('(data/value/deadlock/process-list/process[1]/executionStack/frame)[1]', 'nvarchar(max)') as statement1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@clientapp', 'nvarchar(250)') as client1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@hostname', 'nvarchar(250)') as hostname1,  
+     c.value('(data/value/deadlock/process-list/process)[1]/@loginname', 'nvarchar(250)') as loginname1,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@id', 'nvarchar(250)') as victorProcessid2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@spid', 'int') as victorSpid,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@waitresource', 'nvarchar(250)') as waitResource2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@waittime', 'int') as waitTime2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@ownerId', 'bigint') as ownerId2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@currentdb', 'int') as currentDb2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@lasttranstarted', 'datetime2') as lastTranStarted2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@lastbatchstarted', 'datetime2') as lastBatchStarted2,  
+     c.value('(data/value/deadlock/process-list/process[2]/executionStack/frame)[1]', 'nvarchar(max)') as statement2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@clientapp', 'nvarchar(250)') as client2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@hostname', 'nvarchar(250)') as hostname2,  
+     c.value('(data/value/deadlock/process-list/process)[2]/@loginname', 'nvarchar(250)') as loginname2,  
+     coalesce(  
+       c.value('(data/value/deadlock/resource-list/keylock)[1]/@indexname[1]', 'nvarchar(250)'),   
+       c.value('(data/value/deadlock/resource-list/pagelock)[1]/@objectname[1]', 'nvarchar(250)'),  
+       c.value('(data/value/deadlock/resource-list/objectlock)[1]/@objectname[1]', 'nvarchar(250)')  
+       ) as resource1,  
+     coalesce(  
+       c.value('(data/value/deadlock/resource-list/keylock)[2]/@indexname[1]', 'nvarchar(250)'),   
+       c.value('(data/value/deadlock/resource-list/pagelock)[2]/@objectname[1]', 'nvarchar(250)'),  
+       c.value('(data/value/deadlock/resource-list/objectlock)[2]/@objectname[1]', 'nvarchar(250)')   
+       ) as resource2  
+    from   @deadlockxml  as dld  
+    cross apply eventdata.nodes('//event') as t(c)  
+   )  
+   insert into monitoring.deadlockInformation  
+    (  
+    deadlockTimestamp,  
+    victimProcessId,  
+    victimSpid,  
+    waitResource1,  
+    waitTime1,  
+    ownerId1,  
+    currentDb1,  
+    lastTranStarted1,  
+    lastBatchStarted1,  
+    statement1,  
+    client1,  
+    hostname1,  
+    loginname1,  
+    victorProcessid2,  
+    victorSpid,  
+    waitResource2,  
+    waitTime2,  
+    ownerId2,  
+    currentDb2,  
+    lastTranStarted2,  
+    lastBatchStarted2,  
+    statement2,  
+    client2,  
+    hostname2,  
+    loginname2,  
+    deadlockXML,  
+    resource1,  
+    resource2  
+    )  
+    select t1.deadlockTimestamp,  
+      t1.victimProcessId,  
+      t1.victimSpid,  
+      t1.waitResource1,  
+      t1.waitTime1,  
+      t1.ownerId1,  
+      t1.currentDb1,  
+      t1.lastTranStarted1,  
+      t1.lastBatchStarted1,  
+      t1.statement1,  
+      t1.client1,  
+      t1.hostname1,  
+      t1.loginname1,  
+      t1.victorProcessid2,  
+      t1.victorSpid,  
+      t1.waitResource2,  
+      t1.waitTime2,  
+      t1.ownerId2,  
+      t1.currentDb2,  
+      t1.lastTranStarted2,  
+      t1.lastBatchStarted2,  
+      t1.statement2,  
+      t1.client2,  
+      t1.hostname2,  
+      t1.loginname2,  
+      t1.[eventdata],  
+      t1.resource1,  
+      t1.resource2          
+    from   cteDeadlocks t1  
+    left outer join monitoring.deadlockInformation t2  
+     on  t1.deadlockTimestamp = t2.deadlockTimeStamp  
+     and t1.victimSpid = t2.victimSpid  
+    where  t2.deadlockTimeStamp is null  
+      and t2.victimSpid is null;  
