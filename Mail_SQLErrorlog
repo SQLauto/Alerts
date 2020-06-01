@@ -1,0 +1,51 @@
+ALTER PROC [dbo].[Mail_SQLErrorlog]
+      @recipients   VARCHAR(MAX) = 'DL-CommanderSupport@diebold.com'
+    , @profile_name SYSNAME      = '<ALERT.CMDR.SQL>'
+
+	 
+  
+AS
+/* Script to mail 'unusual' SQL Error Log entries, after collection in a holding table on the monitor server.
+   This script should be run after retrieval of linked server error logs (procedure 'Retrieve_LinkedServer_ErrorLog') 
+   and removal of trivial messages (procedure 'Cleanup_Errorlog_Holding_Table')
+*/
+    -- Send message if the error log holding table contains entries other than failed logins  
+IF EXISTS (SELECT 1 FROM dbo.SQLErrorlog WHERE CHARINDEX('Login failed for user', [text]) = 0)
+ BEGIN
+
+  
+      DECLARE @tableHTML NVARCHAR(MAX);
+
+    SET @tableHTML = N'<H1 style="color: #000000">SQL SERVER ERROR LOG ENTRIES </H1>' + N'<table border="1">' +
+    
+    '<body><table cellpadding=3 cellspacing=3 border=3>' +
+'<tr bgcolor=#F6AC5D>'+
+'<td align=center><b>Server</b></td>' +
+'<td align=center><b>Date</b></td>' +
+'<td align=center><b>Process</b></td>' +
+'<td align=center><b>Count</b></td>' +
+'<td align=center><b>Text</b></td>' +
+'</tr>'
+  
+  
+  
+  
+  
+  + CAST(
+           (SELECT   [ServerName]                   AS 'td',''
+                   , CONVERT(CHAR(30),[LogDate],21) AS 'td',''
+                   , [Processinfo]                  AS 'td',''
+                   , [Count]                        AS 'td',''
+                   , [Text]                         AS 'td','' 
+            FROM     dbo.SQLErrorlog 
+            WHERE    CHARINDEX('Login failed for user', [text]) = 0     -- no regular failed login warnings
+            ORDER BY [ServerName], [Count] DESC, [LogDate] DESC
+            FOR XML PATH('tr'),  TYPE
+                ) AS NVARCHAR(MAX)) + N'</table>';
+
+    EXEC msdb.dbo.sp_send_dbmail @body = @tableHTML
+        ,@body_format = 'HTML'
+        ,@profile_name = 'ALERT.CMDR.SQL'
+        ,@recipients='DL-CommanderSupport@diebold.com'
+        ,@Subject = N'SQL Error Log entries'
+END
