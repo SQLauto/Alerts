@@ -1,0 +1,50 @@
+ALTER PROC [dbo].[Mail_Failed_Logins]
+      @recipients   VARCHAR(MAX) ='email'
+    , @profile_name SYSNAME      = 'profile'
+AS
+/* Script to mail failed login attempts recorded in SQL Error Logs, after collection in a holding table on the monitor server.
+   This script should be run after retrieval of linked server error logs (procedure 'Retrieve_LinkedServer_ErrorLog') 
+   and removal of trivial messages (procedure 'Cleanup_Errorlog_Holding_Table')
+   Messages other than failed login attempts are excluded; these are mailed by a separate procedure ('Mail_SQLErrorlog').
+*/
+IF EXISTS (SELECT 1 FROM dbo.SQLErrorlog WHERE  CHARINDEX('Login failed for user', [Text]) > 0)
+BEGIN
+
+      DECLARE @tableHTML NVARCHAR(MAX);
+
+    SET @tableHTML = N'<H1 style="color: #000000">FAILED SQL LOGINS</H1>' + N'<table border="1">' +
+    
+    '<body><table cellpadding=3 cellspacing=3 border=3>' +
+'<tr bgcolor=#F6AC5D>'+
+'<td align=center><b>Server</b></td>' +
+'<td align=center><b>Date</b></td>' +
+'<td align=center><b>Login Name</b></td>' +
+'<td align=center><b>Count</b></td>' +
+'<td align=center><b>Client Name</b></td>' +
+'<td align=center><b>Extra Info</b></td>' +
+'</tr>'
+  
++ CAST( 
+                (SELECT   LEFT([ServerName],25)                     AS 'td',''            -- Server
+                        , CONVERT(CHAR(30),[LogDate],21)            AS 'td',''            -- Date
+                        , CASE 
+                            WHEN CHARINDEX('''''' , [Text]) > 0 
+                            THEN ''
+                            ELSE LEFT(SUBSTRING([Text], CHARINDEX('''' , [Text]) + 1, CHARINDEX('''', [Text], CHARINDEX('''' , [Text]) + 1) - CHARINDEX('''' , [Text]) - 1),30)
+                          END                                       AS 'td',''            -- Login Name
+                        , [COUNT]                                   AS 'td',''            -- Count
+                        , LEFT(SUBSTRING([Text], CHARINDEX('[CLIENT', [Text]) + 9, CHARINDEX(']', [Text]) - CHARINDEX('[CLIENT', [Text]) - 9),17)
+                                                                    AS 'td',''            -- Client Name
+                        , CASE 
+                            WHEN CHARINDEX('''. [',[Text]) = 0
+                              -- print extra info if any is found between user name (terminated by single quote, full stop and space) and CLIENT info (starting with left square bracket
+                            THEN LEFT(SUBSTRING([Text], CHARINDEX('''. ',[Text]) + 3, CHARINDEX('. [',[Text]) - CHARINDEX('''. ',[Text]) - 1),100)
+                              -- print the info between the user name and client IP address
+                            ELSE '' 
+                          END                                       AS 'td',''            -- Extra Info
+                 FROM   dbo.SQLErrorlog 
+                 WHERE  CHARINDEX('Login failed for user', [Text]) > 0
+                 ORDER BY 1, 2, 3, 5
+                 FOR XML PATH('tr'),  TYPE
+                ) AS NVARCHAR(MAX)) + N'</table>';
+           
