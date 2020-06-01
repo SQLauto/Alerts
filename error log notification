@@ -1,0 +1,19 @@
+	  -- empty holding table to allow for new content
+TRUNCATE TABLE SQLErrorlog
+go
+  -- Collect remote error log entries
+EXEC [Retrieve_LinkedServer_ErrorLog] 'USTX1TDCMD1WSP\SQL14C1'
+go
+  -- remove unwanted entries from holding table
+EXEC Cleanup_Errorlog_Holding_Table
+go
+  -- mail error log records
+EXEC [Mail_SQLErrorlog]
+   @profile_name = 'ALERT.CMDR.SQL',
+    @recipients = 'DL-CommanderSupport@diebold.com;'
+	go
+  -- mail failed logins 
+EXEC [Mail_Failed_Logins]
+   @profile_name = 'ALERT.CMDR.SQL',
+    @recipients = 'DL-CommanderSupport@diebold.com;'
+	go
